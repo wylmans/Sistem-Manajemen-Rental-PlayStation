@@ -15,16 +15,15 @@
 #include <QDateTime>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), sqlModel(nullptr), displayModel(nullptr)
+    : QMainWindow(parent), sqlModel(nullptr), displayModel(nullptr), originalModel(nullptr)
 {
     setupUI();
     resize(1400, 800);
     setWindowTitle("Sistem Manajemen Rental PlayStation");
     
-    // Setup real-time update timer (update every 30 seconds)
     updateTimer = new QTimer(this);
     connect(updateTimer, &QTimer::timeout, this, &MainWindow::updateRealTimeData);
-    updateTimer->start(30000); // 30 seconds
+    updateTimer->start(30000);
 }
 
 MainWindow::~MainWindow() {
@@ -33,6 +32,9 @@ MainWindow::~MainWindow() {
     }
     if (displayModel) {
         delete displayModel;
+    }
+    if (originalModel) {
+        delete originalModel;
     }
     if (updateTimer) {
         updateTimer->stop();
@@ -44,11 +46,9 @@ void MainWindow::setupUI() {
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
 
-    // ===== Status Label =====
     statusLabel = new QLabel("Status: Belum terhubung ke database");
     statusLabel->setObjectName("statusLabel");
 
-    // ===== Database Type Selector =====
     dbTypeCombo = new QComboBox;
     dbTypeCombo->addItem("SQLite", DatabaseManager::SQLite);
     dbTypeCombo->addItem("PostgreSQL", DatabaseManager::PostgreSQL);
@@ -64,7 +64,6 @@ void MainWindow::setupUI() {
     dbLayout->addWidget(statusLabel);
     dbLayout->addStretch();
 
-    // ===== Operator info =====
     operatorNameEdit = new QLineEdit;
     operatorNameEdit->setPlaceholderText("Nama operator");
     
@@ -73,13 +72,12 @@ void MainWindow::setupUI() {
     dateEdit->setCalendarPopup(true);
 
     QHBoxLayout *operatorLayout = new QHBoxLayout;
-    operatorLayout->addWidget(new QLabel("👤 Operator:"));
+    operatorLayout->addWidget(new QLabel("Operator:"));
     operatorLayout->addWidget(operatorNameEdit);
-    operatorLayout->addWidget(new QLabel("📅 Tanggal:"));
+    operatorLayout->addWidget(new QLabel("Tanggal:"));
     operatorLayout->addWidget(dateEdit);
     operatorLayout->addStretch();
 
-    // ===== Filters =====
     idCustomerFilter = new QLineEdit;
     idCustomerFilter->setPlaceholderText("ID Customer");
     
@@ -96,7 +94,7 @@ void MainWindow::setupUI() {
     tanggalFilter->setPlaceholderText("YYYY-MM-DD");
 
     QHBoxLayout *filterLayout = new QHBoxLayout;
-    filterLayout->addWidget(new QLabel("🔍 Filter - ID:"));
+    filterLayout->addWidget(new QLabel("Filter - ID:"));
     filterLayout->addWidget(idCustomerFilter);
     filterLayout->addWidget(new QLabel("Nama:"));
     filterLayout->addWidget(namaCustomerFilter);
@@ -107,14 +105,13 @@ void MainWindow::setupUI() {
     filterLayout->addWidget(new QLabel("Tanggal:"));
     filterLayout->addWidget(tanggalFilter);
 
-    // ===== Buttons =====
     searchButton = new QPushButton("🔍 Filter Data");
     searchButton->setObjectName("searchButton");
     
     refreshButton = new QPushButton("🔄 Refresh");
     refreshButton->setObjectName("refreshButton");
     
-    exportButton = new QPushButton("📄 Ekspor ke CSV");
+    exportButton = new QPushButton("📊 Ekspor ke CSV");
     exportButton->setObjectName("exportButton");
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
@@ -123,7 +120,6 @@ void MainWindow::setupUI() {
     buttonLayout->addWidget(exportButton);
     buttonLayout->addStretch();
 
-    // ===== Table =====
     tableView = new QTableView;
     tableView->setAlternatingRowColors(true);
     tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -133,14 +129,12 @@ void MainWindow::setupUI() {
     tableView->setObjectName("dataTable");
     tableView->verticalHeader()->setVisible(false);
 
-    // ===== Layout utama =====
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
     mainLayout->setSpacing(15);
     mainLayout->setContentsMargins(20, 20, 20, 20);
     
     mainLayout->addLayout(dbLayout);
     
-    // Separator line
     QFrame *line1 = new QFrame();
     line1->setFrameShape(QFrame::HLine);
     line1->setFrameShadow(QFrame::Sunken);
@@ -159,7 +153,6 @@ void MainWindow::setupUI() {
     mainLayout->addLayout(buttonLayout);
     mainLayout->addWidget(tableView);
 
-    // ===== Connections =====
     connect(dbConnectButton, &QPushButton::clicked, this, &MainWindow::showDatabaseDialog);
     connect(searchButton, &QPushButton::clicked, this, &MainWindow::searchData);
     connect(refreshButton, &QPushButton::clicked, this, &MainWindow::refreshTable);
@@ -225,8 +218,7 @@ void MainWindow::showDatabaseDialog() {
             if (success) {
                 statusLabel->setText("Status: ✅ Terhubung ke database");
                 statusLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
-                QMessageBox::information(this, "Berhasil", 
-                    "Terhubung ke database!");
+                QMessageBox::information(this, "Berhasil", "Terhubung ke database!");
                 refreshTable();
             } else {
                 statusLabel->setText("Status: ❌ Gagal terhubung");
@@ -263,15 +255,18 @@ void MainWindow::refreshTable() {
         QMessageBox::warning(this, "Error", "Database belum terhubung!");
         return;
     }
-
     loadDataWithCalculations();
 }
 
 void MainWindow::loadDataWithCalculations() {
-    // Clean up old models
     if (displayModel) {
         delete displayModel;
         displayModel = nullptr;
+    }
+    
+    if (originalModel) {
+        delete originalModel;
+        originalModel = nullptr;
     }
     
     if (sqlModel) {
@@ -279,10 +274,8 @@ void MainWindow::loadDataWithCalculations() {
         sqlModel = nullptr;
     }
 
-    // Create SQL model
     sqlModel = new QSqlTableModel(this, dbManager.getDatabase());
     
-    // Try common table names
     QStringList tableNames = {"Sistem_rental", "rental_data", "rental"};
     bool tableFound = false;
     QString foundTableName;
@@ -306,27 +299,21 @@ void MainWindow::loadDataWithCalculations() {
         return;
     }
 
-    // Create display model with calculated columns
-    displayModel = new QStandardItemModel(this);
+    originalModel = new QStandardItemModel(this);
     
-    // Get column names and indices
     QMap<QString, int> columnMap;
     QStringList headers;
     for (int c = 0; c < sqlModel->columnCount(); ++c) {
         QString headerName = sqlModel->headerData(c, Qt::Horizontal).toString();
         headers << headerName;
         columnMap[headerName] = c;
-        qDebug() << "Column" << c << ":" << headerName;
     }
     
-    // Add calculated columns
     headers << "Bonus Malam (Jam)" << "Sisa Waktu (Jam)" << "Status";
-    displayModel->setHorizontalHeaderLabels(headers);
+    originalModel->setHorizontalHeaderLabels(headers);
 
-    // Find required column indices
     int jamMulaiCol = -1, jamSelesaiCol = -1, totalJamCol = -1;
     
-    // Try different possible column names
     QStringList jamMulaiNames = {"Jam_Mulai", "jam_mulai", "JamMulai", "waktu_mulai", "start_time"};
     QStringList jamSelesaiNames = {"Jam_Selesai", "jam_selesai", "JamSelesai", "waktu_selesai", "end_time"};
     QStringList totalJamNames = {"Total_Jam", "total_jam", "TotalJam", "durasi", "duration"};
@@ -334,7 +321,6 @@ void MainWindow::loadDataWithCalculations() {
     for (const QString &name : jamMulaiNames) {
         if (columnMap.contains(name)) {
             jamMulaiCol = columnMap[name];
-            qDebug() << "✅ Found Jam_Mulai column:" << name << "at index" << jamMulaiCol;
             break;
         }
     }
@@ -342,7 +328,6 @@ void MainWindow::loadDataWithCalculations() {
     for (const QString &name : jamSelesaiNames) {
         if (columnMap.contains(name)) {
             jamSelesaiCol = columnMap[name];
-            qDebug() << "✅ Found Jam_Selesai column:" << name << "at index" << jamSelesaiCol;
             break;
         }
     }
@@ -350,26 +335,15 @@ void MainWindow::loadDataWithCalculations() {
     for (const QString &name : totalJamNames) {
         if (columnMap.contains(name)) {
             totalJamCol = columnMap[name];
-            qDebug() << "✅ Found Total_Jam column:" << name << "at index" << totalJamCol;
             break;
         }
     }
-    
-    if (jamMulaiCol == -1 || jamSelesaiCol == -1 || totalJamCol == -1) {
-        qWarning() << "⚠️ Warning: Could not find required time columns";
-        qWarning() << "   Jam_Mulai column:" << (jamMulaiCol != -1 ? "Found" : "NOT FOUND");
-        qWarning() << "   Jam_Selesai column:" << (jamSelesaiCol != -1 ? "Found" : "NOT FOUND");
-        qWarning() << "   Total_Jam column:" << (totalJamCol != -1 ? "Found" : "NOT FOUND");
-    }
 
-    // Populate display model with calculated data
     QDateTime currentTime = QDateTime::currentDateTime();
-    qDebug() << "🕐 Current time:" << currentTime.toString("yyyy-MM-dd HH:mm:ss");
     
     for (int row = 0; row < sqlModel->rowCount(); ++row) {
         QList<QStandardItem*> rowItems;
         
-        // Copy original columns
         for (int col = 0; col < sqlModel->columnCount(); ++col) {
             QString data = sqlModel->data(sqlModel->index(row, col)).toString();
             QStandardItem *item = new QStandardItem(data);
@@ -377,7 +351,6 @@ void MainWindow::loadDataWithCalculations() {
             rowItems.append(item);
         }
         
-        // Extract time data for calculations
         QDateTime jamMulai, jamSelesai;
         int totalJam = 0;
         
@@ -407,15 +380,6 @@ void MainWindow::loadDataWithCalculations() {
             totalJam = sqlModel->data(sqlModel->index(row, totalJamCol)).toInt();
         }
         
-        // Debug first row
-        if (row == 0) {
-            qDebug() << "🔍 Sample row 0 data:";
-            qDebug() << "   Jam Mulai:" << jamMulai.toString("yyyy-MM-dd HH:mm:ss") << (jamMulai.isValid() ? "✅" : "❌");
-            qDebug() << "   Jam Selesai:" << jamSelesai.toString("yyyy-MM-dd HH:mm:ss") << (jamSelesai.isValid() ? "✅" : "❌");
-            qDebug() << "   Total Jam:" << totalJam;
-        }
-        
-        // CALCULATE NIGHT BONUS
         double nightBonus = calculateNightBonus(jamMulai, totalJam);
         QStandardItem *bonusItem = new QStandardItem(QString::number(nightBonus, 'f', 1));
         bonusItem->setTextAlignment(Qt::AlignCenter);
@@ -428,7 +392,6 @@ void MainWindow::loadDataWithCalculations() {
         }
         rowItems.append(bonusItem);
         
-        // CALCULATE REMAINING TIME
         double sisaWaktu = calculateRemainingTime(jamSelesai);
         QStandardItem *sisaItem = new QStandardItem(QString::number(sisaWaktu, 'f', 2));
         sisaItem->setTextAlignment(Qt::AlignCenter);
@@ -445,7 +408,6 @@ void MainWindow::loadDataWithCalculations() {
         }
         rowItems.append(sisaItem);
         
-        // CALCULATE STATUS
         QString status = getStatusString(jamMulai, jamSelesai);
         QStandardItem *statusItem = new QStandardItem(status);
         statusItem->setTextAlignment(Qt::AlignCenter);
@@ -456,20 +418,34 @@ void MainWindow::loadDataWithCalculations() {
         statusItem->setFont(boldFont);
         rowItems.append(statusItem);
         
-        displayModel->appendRow(rowItems);
+        originalModel->appendRow(rowItems);
     }
     
-    qDebug() << "✅ Display model created with" << displayModel->rowCount() << "rows";
+    displayModel = new QStandardItemModel(this);
+    displayModel->setHorizontalHeaderLabels(headers);
+    
+    for (int row = 0; row < originalModel->rowCount(); ++row) {
+        QList<QStandardItem*> rowItems;
+        for (int col = 0; col < originalModel->columnCount(); ++col) {
+            QStandardItem *originalItem = originalModel->item(row, col);
+            QStandardItem *newItem = new QStandardItem(originalItem->text());
+            newItem->setTextAlignment(originalItem->textAlignment());
+            newItem->setForeground(originalItem->foreground());
+            newItem->setFont(originalItem->font());
+            newItem->setEditable(false);
+            rowItems.append(newItem);
+        }
+        displayModel->appendRow(rowItems);
+    }
     
     tableView->setModel(displayModel);
     tableView->resizeColumnsToContents();
     
-    // Adjust column widths for calculated columns
     int colCount = displayModel->columnCount();
     if (colCount >= 3) {
-        tableView->setColumnWidth(colCount - 3, 150); // Bonus Malam
-        tableView->setColumnWidth(colCount - 2, 150); // Sisa Waktu
-        tableView->setColumnWidth(colCount - 1, 120); // Status
+        tableView->setColumnWidth(colCount - 3, 150);
+        tableView->setColumnWidth(colCount - 2, 150);
+        tableView->setColumnWidth(colCount - 1, 120);
     }
 }
 
@@ -478,7 +454,6 @@ double MainWindow::calculateNightBonus(const QDateTime &startTime, int durationH
         return 0.0;
     }
     
-    // Night hours: 21:00 - 06:00
     QTime nightStart(21, 0);
     QTime nightEnd(6, 0);
     
@@ -486,28 +461,15 @@ double MainWindow::calculateNightBonus(const QDateTime &startTime, int durationH
     QDateTime currentCheck = startTime;
     QDateTime endTime = startTime.addSecs(durationHours * 3600);
     
-    // Check each hour of the rental period
     while (currentCheck < endTime) {
         QTime checkTime = currentCheck.time();
-        
-        // Count hours between 21:00-23:59 or 00:00-05:59
         if (checkTime >= nightStart || checkTime < nightEnd) {
             nightHours += 1.0;
         }
-        
-        currentCheck = currentCheck.addSecs(3600); // Add 1 hour
+        currentCheck = currentCheck.addSecs(3600);
     }
     
-    // Bonus: 1 hour for every 3 hours played at night
-    double bonus = nightHours / 3.0;
-    
-    qDebug() << "🌙 Night Bonus Calculation:";
-    qDebug() << "   Start:" << startTime.toString("yyyy-MM-dd HH:mm");
-    qDebug() << "   Duration:" << durationHours << "hours";
-    qDebug() << "   Night hours:" << nightHours;
-    qDebug() << "   Bonus:" << bonus << "hours";
-    
-    return bonus;
+    return nightHours / 3.0;
 }
 
 double MainWindow::calculateRemainingTime(const QDateTime &endTime) {
@@ -517,14 +479,7 @@ double MainWindow::calculateRemainingTime(const QDateTime &endTime) {
     
     QDateTime now = QDateTime::currentDateTime();
     qint64 secondsRemaining = now.secsTo(endTime);
-    double hoursRemaining = secondsRemaining / 3600.0;
-    
-    qDebug() << "⏰ Remaining Time:";
-    qDebug() << "   End time:" << endTime.toString("yyyy-MM-dd HH:mm:ss");
-    qDebug() << "   Current:" << now.toString("yyyy-MM-dd HH:mm:ss");
-    qDebug() << "   Remaining:" << hoursRemaining << "hours";
-    
-    return hoursRemaining;
+    return secondsRemaining / 3600.0;
 }
 
 QString MainWindow::getStatusString(const QDateTime &startTime, const QDateTime &endTime) {
@@ -545,13 +500,13 @@ QString MainWindow::getStatusString(const QDateTime &startTime, const QDateTime 
 
 QColor MainWindow::getStatusColor(const QString &status) {
     if (status == "Sedang Main") {
-        return QColor("#27ae60"); // Green
+        return QColor("#27ae60");
     } else if (status == "Belum Mulai") {
-        return QColor("#3498db"); // Blue
+        return QColor("#3498db");
     } else if (status == "Selesai") {
-        return QColor("#95a5a6"); // Gray
+        return QColor("#95a5a6");
     }
-    return QColor("#000000"); // Black
+    return QColor("#000000");
 }
 
 void MainWindow::updateRealTimeData() {
@@ -559,15 +514,12 @@ void MainWindow::updateRealTimeData() {
         return;
     }
     
-    qDebug() << "🔄 Updating real-time data...";
-    
     int colCount = displayModel->columnCount();
     if (colCount < 3) return;
     
     int sisaWaktuCol = colCount - 2;
     int statusCol = colCount - 1;
     
-    // Find Jam_Mulai and Jam_Selesai column indices in original data
     int jamMulaiIdx = -1, jamSelesaiIdx = -1;
     for (int c = 0; c < colCount - 3; ++c) {
         QString header = displayModel->headerData(c, Qt::Horizontal).toString();
@@ -582,12 +534,10 @@ void MainWindow::updateRealTimeData() {
     }
     
     if (jamMulaiIdx < 0 || jamSelesaiIdx < 0) {
-        qWarning() << "⚠️ Cannot find time columns for update";
         return;
     }
     
     for (int row = 0; row < displayModel->rowCount(); ++row) {
-        // Parse times
         QString jamMulaiStr = displayModel->data(displayModel->index(row, jamMulaiIdx)).toString();
         QString jamSelesaiStr = displayModel->data(displayModel->index(row, jamSelesaiIdx)).toString();
         
@@ -601,7 +551,6 @@ void MainWindow::updateRealTimeData() {
             jamSelesai = QDateTime::fromString(jamSelesaiStr, "yyyy-MM-dd HH:mm");
         }
         
-        // Update remaining time
         double sisaWaktu = calculateRemainingTime(jamSelesai);
         QStandardItem *sisaItem = displayModel->item(row, sisaWaktuCol);
         if (sisaItem) {
@@ -615,7 +564,6 @@ void MainWindow::updateRealTimeData() {
             }
         }
         
-        // Update status
         QString status = getStatusString(jamMulai, jamSelesai);
         QStandardItem *statusItem = displayModel->item(row, statusCol);
         if (statusItem) {
@@ -623,47 +571,149 @@ void MainWindow::updateRealTimeData() {
             statusItem->setForeground(QBrush(getStatusColor(status)));
         }
     }
-    
-    qDebug() << "✅ Real-time data updated";
 }
 
 void MainWindow::searchData() {
-    if (!dbManager.isConnected()) {
-        QMessageBox::warning(this, "Error", "Database belum terhubung!");
+    if (!originalModel || originalModel->rowCount() == 0) {
+        QMessageBox::warning(this, "Error", "Data belum dimuat!");
         return;
     }
 
-    if (!sqlModel) {
-        QMessageBox::warning(this, "Error", "Tabel belum dimuat!");
+    applyLocalFilter();
+    
+    qDebug() << "🔍 Filter applied. Showing" << displayModel->rowCount() 
+             << "of" << originalModel->rowCount() << "rows";
+}
+
+void MainWindow::applyLocalFilter() {
+    if (!originalModel || !displayModel)
+        return;
+
+    QString idFilter = idCustomerFilter->text().trimmed();
+    QString namaFilter = namaCustomerFilter->text().trimmed();
+    QString metodeFilter = metodePembayaranFilter->text().trimmed();
+    QString gameFilter = tipeRuanganFilter->text().trimmed();
+    QString dateFilter = tanggalFilter->text().trimmed();
+
+    displayModel->removeRows(0, displayModel->rowCount());
+
+    QMap<QString, int> filterColumns;
+    int colCount = originalModel->columnCount();
+    
+    for (int c = 0; c < colCount; ++c) {
+        QString header = originalModel->headerData(c, Qt::Horizontal).toString();
+        if (header.contains("Id_Customer", Qt::CaseInsensitive) || 
+            header.contains("ID Customer", Qt::CaseInsensitive)) {
+            filterColumns["id"] = c;
+        }
+        if (header.contains("Nama_Customer", Qt::CaseInsensitive) || 
+            header.contains("Nama Customer", Qt::CaseInsensitive)) {
+            filterColumns["nama"] = c;
+        }
+        if (header.contains("Metode_Pembayaran", Qt::CaseInsensitive) || 
+            header.contains("Metode Pembayaran", Qt::CaseInsensitive)) {
+            filterColumns["metode"] = c;
+        }
+        if (header.contains("Game", Qt::CaseInsensitive) || 
+            header.contains("Tipe", Qt::CaseInsensitive)) {
+            filterColumns["game"] = c;
+        }
+        if (header.contains("Jam_Mulai", Qt::CaseInsensitive) || 
+            header.contains("Tanggal", Qt::CaseInsensitive)) {
+            filterColumns["tanggal"] = c;
+        }
+    }
+
+    for (int row = 0; row < originalModel->rowCount(); ++row) {
+        bool match = true;
+        
+        if (!idFilter.isEmpty() && filterColumns.contains("id")) {
+            QString cellText = originalModel->item(row, filterColumns["id"])->text();
+            if (!cellText.contains(idFilter, Qt::CaseInsensitive)) {
+                match = false;
+            }
+        }
+        
+        if (match && !namaFilter.isEmpty() && filterColumns.contains("nama")) {
+            QString cellText = originalModel->item(row, filterColumns["nama"])->text();
+            if (!cellText.contains(namaFilter, Qt::CaseInsensitive)) {
+                match = false;
+            }
+        }
+        
+        if (match && !metodeFilter.isEmpty() && filterColumns.contains("metode")) {
+            QString cellText = originalModel->item(row, filterColumns["metode"])->text();
+            if (!cellText.contains(metodeFilter, Qt::CaseInsensitive)) {
+                match = false;
+            }
+        }
+        
+        if (match && !gameFilter.isEmpty() && filterColumns.contains("game")) {
+            QString cellText = originalModel->item(row, filterColumns["game"])->text();
+            if (!cellText.contains(gameFilter, Qt::CaseInsensitive)) {
+                match = false;
+            }
+        }
+        
+        if (match && !dateFilter.isEmpty() && filterColumns.contains("tanggal")) {
+            QString cellText = originalModel->item(row, filterColumns["tanggal"])->text();
+            if (!cellText.contains(dateFilter, Qt::CaseInsensitive)) {
+                match = false;
+            }
+        }
+        
+        if (match) {
+            QList<QStandardItem*> newRow;
+            for (int col = 0; col < colCount; ++col) {
+                QStandardItem *originalItem = originalModel->item(row, col);
+                QStandardItem *newItem = new QStandardItem(originalItem->text());
+                
+                newItem->setTextAlignment(originalItem->textAlignment());
+                newItem->setForeground(originalItem->foreground());
+                newItem->setFont(originalItem->font());
+                newItem->setEditable(false);
+                
+                if (col == filterColumns.value("id", -1) && !idFilter.isEmpty()) {
+                    highlightFilteredText(newItem, idFilter);
+                } else if (col == filterColumns.value("nama", -1) && !namaFilter.isEmpty()) {
+                    highlightFilteredText(newItem, namaFilter);
+                } else if (col == filterColumns.value("metode", -1) && !metodeFilter.isEmpty()) {
+                    highlightFilteredText(newItem, metodeFilter);
+                } else if (col == filterColumns.value("game", -1) && !gameFilter.isEmpty()) {
+                    highlightFilteredText(newItem, gameFilter);
+                } else if (col == filterColumns.value("tanggal", -1) && !dateFilter.isEmpty()) {
+                    highlightFilteredText(newItem, dateFilter);
+                }
+                
+                newRow.append(newItem);
+            }
+            displayModel->appendRow(newRow);
+        }
+    }
+    
+    qDebug() << "✅ Filter applied:" << displayModel->rowCount() << "rows matched";
+}
+
+void MainWindow::highlightFilteredText(QStandardItem *item, const QString &pattern) {
+    if (pattern.isEmpty() || !item) {
         return;
     }
 
-    QStringList filters;
+    QString text = item->text();
+    int index = text.indexOf(pattern, 0, Qt::CaseInsensitive);
     
-    if (!idCustomerFilter->text().isEmpty()) {
-        filters << QString("Id_Customer LIKE '%%1%'").arg(idCustomerFilter->text());
+    if (index >= 0) {
+        QColor highlightColor("#2980b9");
+        item->setForeground(QBrush(highlightColor));
+        
+        QFont boldFont = item->font();
+        boldFont.setBold(true);
+        item->setFont(boldFont);
+        
+        item->setBackground(QBrush(QColor("#e3f2fd")));
+        
+        qDebug() << "🔍 Highlighted:" << text << "with pattern:" << pattern;
     }
-    if (!namaCustomerFilter->text().isEmpty()) {
-        filters << QString("Nama_Customer LIKE '%%1%'").arg(namaCustomerFilter->text());
-    }
-    if (!metodePembayaranFilter->text().isEmpty()) {
-        filters << QString("Metode_Pembayaran LIKE '%%1%'").arg(metodePembayaranFilter->text());
-    }
-    if (!tipeRuanganFilter->text().isEmpty()) {
-        filters << QString("Game LIKE '%%1%'").arg(tipeRuanganFilter->text());
-    }
-    if (!tanggalFilter->text().isEmpty()) {
-        filters << QString("Jam_Mulai LIKE '%%1%'").arg(tanggalFilter->text());
-    }
-
-    QString filterString = filters.join(" AND ");
-    sqlModel->setFilter(filterString);
-    sqlModel->select();
-    
-    qDebug() << "🔍 Applied filter:" << filterString;
-    
-    // Reload with calculations
-    loadDataWithCalculations();
 }
 
 void MainWindow::exportToCSV() {
@@ -689,28 +739,24 @@ void MainWindow::exportToCSV() {
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
 
-    // Header laporan
     out << "LAPORAN RENTAL PLAYSTATION\n";
     out << "========================================\n";
     out << "Operator:," << operatorNameEdit->text() << "\n";
     out << "Tanggal:," << dateEdit->date().toString("dd/MM/yyyy") << "\n";
     out << "Waktu Ekspor:," << QDateTime::currentDateTime().toString("dd/MM/yyyy HH:mm:ss") << "\n";
-    out << "Total Data:," << displayModel->rowCount() << "\n";
+    out << "Total Data (Filtered):," << displayModel->rowCount() << "\n";
     out << "========================================\n\n";
 
-    // Header kolom
     QStringList headers;
     for (int c = 0; c < displayModel->columnCount(); ++c) {
         headers << displayModel->headerData(c, Qt::Horizontal).toString();
     }
     out << headers.join(",") << "\n";
 
-    // Data baris
     for (int r = 0; r < displayModel->rowCount(); ++r) {
         QStringList rowData;
         for (int c = 0; c < displayModel->columnCount(); ++c) {
             QString data = displayModel->data(displayModel->index(r, c)).toString();
-            // Escape commas and quotes
             if (data.contains(",") || data.contains("\"") || data.contains("\n")) {
                 data = "\"" + data.replace("\"", "\"\"") + "\"";
             }

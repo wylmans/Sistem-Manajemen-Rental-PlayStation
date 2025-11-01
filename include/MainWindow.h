@@ -33,6 +33,8 @@ private slots:
 private:
     void setupUI();
     void loadDataWithCalculations();
+    void applyLocalFilter();
+    void highlightFilteredText(QStandardItem *item, const QString &pattern);
     
     // Calculation functions
     double calculateNightBonus(const QDateTime &startTime, int durationHours);
@@ -43,6 +45,7 @@ private:
     DatabaseManager dbManager;
     QTableView *tableView;
     QStandardItemModel *displayModel;
+    QStandardItemModel *originalModel;
     QSqlTableModel *sqlModel;
     QTimer *updateTimer;
 
