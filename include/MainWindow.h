@@ -11,6 +11,8 @@
 #include <QDateEdit>
 #include <QSqlTableModel>
 #include <QComboBox>
+#include <QTimer>
+#include <QStandardItemModel>
 #include "DatabaseManager.h"
 
 class MainWindow : public QMainWindow {
@@ -25,14 +27,24 @@ private slots:
     void exportToCSV();
     void searchData();
     void showDatabaseDialog();
+    void updateRealTimeData();
+    void refreshTable();
 
 private:
     void setupUI();
-    void refreshTable();
+    void loadDataWithCalculations();
+    
+    // Calculation functions
+    double calculateNightBonus(const QDateTime &startTime, int durationHours);
+    double calculateRemainingTime(const QDateTime &endTime);
+    QString getStatusString(const QDateTime &startTime, const QDateTime &endTime);
+    QColor getStatusColor(const QString &status);
     
     DatabaseManager dbManager;
     QTableView *tableView;
-    QSqlTableModel *model;
+    QStandardItemModel *displayModel;
+    QSqlTableModel *sqlModel;
+    QTimer *updateTimer;
 
     // Filter fields
     QLineEdit *idCustomerFilter;
@@ -46,13 +58,16 @@ private:
     QDateEdit *dateEdit;
 
     // Buttons
-    QPushButton *loadButton;
     QPushButton *searchButton;
     QPushButton *exportButton;
     QPushButton *dbConnectButton;
+    QPushButton *refreshButton;
     
     // Database type selector
     QComboBox *dbTypeCombo;
+    
+    // Status label
+    QLabel *statusLabel;
 };
 
 #endif // MAINWINDOW_H
