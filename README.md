@@ -606,14 +606,6 @@ SOFTWARE.
 
 ---
 
-## 📞 Kontak & Support
-
-- **GitHub Issues**: [Report Bug](https://github.com/username/rental-playstation/issues)
-- **Email**: your.email@example.com
-- **Documentation**: [Wiki](https://github.com/username/rental-playstation/wiki)
-
----
-
 ## 🙏 Acknowledgments
 
 - Qt Framework team
